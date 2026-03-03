@@ -155,34 +155,35 @@ int update_cnt(oneM2MPrimitive *o2pt, RTNode *target_rtnode)
 
     cJSON *cnt = target_rtnode->obj;
     int result;
-    cJSON *pjson = NULL;
     cJSON *acpi_obj = NULL;
-    bool acpi_flag = false;
 
     result = validate_cnt(o2pt, m2m_cnt, OP_UPDATE);
 
     // update acpi
     if (cJSON_GetObjectItem(m2m_cnt, "acpi"))
     {
-
-        // delete removed acpi
-        cJSON_ArrayForEach(acpi_obj, cJSON_GetObjectItem(cnt, "acpi"))
+        /* acpi가 없는데 새 acpi를 설정하려는 경우: creator만 허용 */
+        if (!cJSON_GetObjectItem(cnt, "acpi"))
         {
-            acpi_flag = false;
-            cJSON_ArrayForEach(pjson, cJSON_GetObjectItem(m2m_cnt, "acpi"))
+            cJSON *cr = cJSON_GetObjectItem(cnt, "cr");
+            char *creator = cr && cr->valuestring ? cr->valuestring : NULL;
+            if (!creator || !o2pt->fr || strcmp(o2pt->fr, creator) != 0)
             {
-                if (strcmp(acpi_obj->valuestring, pjson->valuestring) != 0)
-                {
-                    acpi_flag = true;
-                    break;
-                }
+                return handle_error(o2pt, RSC_ORIGINATOR_HAS_NO_PRIVILEGE, "only creator can set acpi");
             }
-            if (!acpi_flag)
+        }
+        else
+        {
+            // delete removed acpi: 제거되는 acpi에 대해 pvs UPDATE 권한 확인
+            cJSON_ArrayForEach(acpi_obj, cJSON_GetObjectItem(cnt, "acpi"))
             {
-                logger("UTIL", LOG_LEVEL_INFO, "acpi %s", acpi_obj->valuestring);
-                if (!has_acpi_update_privilege(o2pt, acpi_obj->valuestring))
+                if (cJSON_getArrayIdx(cJSON_GetObjectItem(m2m_cnt, "acpi"), acpi_obj->valuestring) == -1)
                 {
-                    return handle_error(o2pt, RSC_ORIGINATOR_HAS_NO_PRIVILEGE, "no privilege to update acpi");
+                    logger("UTIL", LOG_LEVEL_INFO, "acpi deleted : %s", acpi_obj->valuestring);
+                    if (!has_acpi_update_privilege(o2pt, acpi_obj->valuestring))
+                    {
+                        return handle_error(o2pt, RSC_ORIGINATOR_HAS_NO_PRIVILEGE, "no privilege to update acpi");
+                    }
                 }
             }
         }

@@ -409,6 +409,7 @@ int delete_process(oneM2MPrimitive *o2pt, RTNode *rtnode)
 	switch (rtnode->ty)
 	{
 	case RT_ACP:
+		remove_acp_from_all_acpi(rt->cb, rtnode);
 		break;
 	case RT_AE:
 		break;

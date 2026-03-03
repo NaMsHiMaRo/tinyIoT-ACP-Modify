@@ -449,6 +449,31 @@ int validate_grp_update(oneM2MPrimitive *o2pt, cJSON *grp_old, cJSON *grp_new)
         {
             return handle_error(o2pt, RSC_BAD_REQUEST, "`acpi` should be only attribute when updating");
         }
+        /* acpi가 없는데 새 acpi를 설정하려는 경우: creator만 허용 */
+        if (!cJSON_GetObjectItem(grp_old, "acpi"))
+        {
+            cJSON *cr = cJSON_GetObjectItem(grp_old, "cr");
+            char *creator = cr && cr->valuestring ? cr->valuestring : NULL;
+            if (!creator || !o2pt->fr || strcmp(o2pt->fr, creator) != 0)
+            {
+                return handle_error(o2pt, RSC_ORIGINATOR_HAS_NO_PRIVILEGE, "only creator can set acpi");
+            }
+        }
+        else
+        {
+            /* delete removed acpi: 제거되는 acpi에 대해 pvs UPDATE 권한 확인 */
+            cJSON *acpi_obj = NULL;
+            cJSON_ArrayForEach(acpi_obj, cJSON_GetObjectItem(grp_old, "acpi"))
+            {
+                if (cJSON_getArrayIdx(pjson, acpi_obj->valuestring) == -1)
+                {
+                    if (!has_acpi_update_privilege(o2pt, acpi_obj->valuestring))
+                    {
+                        return handle_error(o2pt, RSC_ORIGINATOR_HAS_NO_PRIVILEGE, "no privilege to update acpi");
+                    }
+                }
+            }
+        }
         int result = validate_acpi(o2pt, pjson, ACOP_UPDATE);
         if (result != RSC_OK)
             return result;

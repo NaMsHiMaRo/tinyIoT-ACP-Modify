@@ -151,6 +151,7 @@ int get_acop_macp(oneM2MPrimitive *o2pt, RTNode *rtnode);
 int get_acop_origin(oneM2MPrimitive *o2pt, char *origin, RTNode *acp_rtnode, int flag);
 int has_privilege(oneM2MPrimitive *o2pt, char *acpi, ACOP acop);
 int has_acpi_update_privilege(oneM2MPrimitive *o2pt, char *acpi);
+void remove_acp_from_all_acpi(RTNode *node, RTNode *acp_rtnode);
 
 ResourceType http_parse_object_type(header_t *headers);
 ResourceType coap_parse_object_type(int object_type);

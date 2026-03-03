@@ -140,6 +140,16 @@ int update_ae(oneM2MPrimitive *o2pt, RTNode *target_rtnode)
         return RSC_BAD_REQUEST;
     }
 
+    /* acpi가 없는데 새 acpi를 설정하려는 경우: creator만 허용 */
+    if (!cJSON_GetObjectItem(target_rtnode->obj, "acpi") && cJSON_GetObjectItem(m2m_ae, "acpi"))
+    {
+        char *creator_ri = get_ri_rtnode(target_rtnode);
+        if (!creator_ri || !o2pt->fr || strcmp(o2pt->fr, creator_ri) != 0)
+        {
+            return handle_error(o2pt, RSC_ORIGINATOR_HAS_NO_PRIVILEGE, "only creator can set acpi");
+        }
+    }
+
     int result = validate_ae(o2pt, m2m_ae, OP_UPDATE);
     if (result != RSC_OK)
     {
@@ -147,7 +157,6 @@ int update_ae(oneM2MPrimitive *o2pt, RTNode *target_rtnode)
         return result;
     }
     cJSON *orig_acpi_obj = NULL;
-    bool acpi_flag = false;
     if (cJSON_GetObjectItem(m2m_ae, "acpi"))
     {
         cJSON_ArrayForEach(orig_acpi_obj, cJSON_GetObjectItem(target_rtnode->obj, "acpi"))

@@ -1001,13 +1001,40 @@ int check_privilege(oneM2MPrimitive *o2pt, RTNode *rtnode, ACOP acop)
 	if (target_rtnode->ty == RT_ACP)
 	{
 		int pvs_acop = get_acop_origin(o2pt, origin, target_rtnode, /* PVS */ 1);
-		//int  pv_acop = get_acop_origin(o2pt, origin, target_rtnode, /*  PV */ 0);
-		if ( (pvs_acop & acop) == acop )
+		if ((pvs_acop & acop) == acop)
 		{
-			deny = false;
+			return 0;
+		}
+		handle_error(o2pt, RSC_ORIGINATOR_HAS_NO_PRIVILEGE, "originator has no privilege");
+		return -1;
+	}
+
+	// if resource has no acpi: AE/CNT/GRP support acpi -> Default Access Policy (creator only)
+	if (cJSON_GetObjectItem(target_rtnode->obj, "acpi") == NULL)
+	{
+		if (target_rtnode->ty == RT_AE)
+		{
+			char *creator_ri = get_ri_rtnode(target_rtnode);
+			if (creator_ri && origin && !strcmp(origin, creator_ri))
+			{
+				return 0;
+			}
+			handle_error(o2pt, RSC_ORIGINATOR_HAS_NO_PRIVILEGE, "originator has no privilege (default access policy)");
+			return -1;
+		}
+		if (target_rtnode->ty == RT_CNT || target_rtnode->ty == RT_GRP)
+		{
+			cJSON *cr = cJSON_GetObjectItem(target_rtnode->obj, "cr");
+			char *creator = cr && cr->valuestring ? cr->valuestring : NULL;
+			if (creator && origin && !strcmp(origin, creator))
+			{
+				return 0;
+			}
+			handle_error(o2pt, RSC_ORIGINATOR_HAS_NO_PRIVILEGE, "originator has no privilege (default access policy)");
+			return -1;
 		}
 	}
- 
+
 	// if resource is not an AE|CSR, find acpi for all parent nodes
 	while (target_rtnode->parent && cJSON_GetObjectItem(target_rtnode->obj, "acpi") == NULL)
 	{
@@ -1360,6 +1387,53 @@ int has_acpi_update_privilege(oneM2MPrimitive *o2pt, char *acpi)
 		return 1;
 	}
 	return 0;
+}
+
+/**
+ * @brief ACP 삭제 시 모든 리소스의 acpi에서 해당 ACP 참조 제거
+ * @param node 트리 순회 시작 노드 (보통 rt->cb)
+ * @param acp_rtnode 삭제 대상 ACP rtnode (포인터 비교로 URI/RI 형식 모두 처리)
+ */
+void remove_acp_from_all_acpi(RTNode *node, RTNode *acp_rtnode)
+{
+	if (!node || !acp_rtnode)
+		return;
+
+	if (node != acp_rtnode)
+	{
+		cJSON *acpi = cJSON_GetObjectItem(node->obj, "acpi");
+		if (acpi && cJSON_IsArray(acpi))
+		{
+			bool modified = false;
+			int size = cJSON_GetArraySize(acpi);
+			for (int i = size - 1; i >= 0; i--)
+			{
+				cJSON *item = cJSON_GetArrayItem(acpi, i);
+				if (item && item->valuestring)
+				{
+					RTNode *ref = find_rtnode(item->valuestring);
+					if (ref == acp_rtnode)
+					{
+						cJSON_DeleteItemFromArray(acpi, i);
+						modified = true;
+					}
+				}
+			}
+			if (modified)
+			{
+				if (cJSON_GetArraySize(acpi) == 0)
+					cJSON_DeleteItemFromObject(node->obj, "acpi");
+				db_update_resource(node->obj, get_ri_rtnode(node), node->ty);
+			}
+		}
+	}
+
+	RTNode *child = node->child;
+	while (child)
+	{
+		remove_acp_from_all_acpi(child, acp_rtnode);
+		child = child->sibling_right;
+	}
 }
 
 int check_rn_duplicate(oneM2MPrimitive *o2pt, RTNode *rtnode)
